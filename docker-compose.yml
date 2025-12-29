@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  almondsense:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: almondsense-app
+    ports:
+      - "7903:7903"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7903"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
