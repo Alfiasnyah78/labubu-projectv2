@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Leaf, LogOut, Trash2, Edit2, X, Check, Search, Calendar, Users, FileText } from 'lucide-react';
+import { Leaf, LogOut, Trash2, Edit2, X, Check, Search, Calendar, Users, FileText, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,7 @@ const AdminDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<FormSubmission>>({});
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const isAuthenticated = sessionStorage.getItem('admin_authenticated');
@@ -24,8 +25,11 @@ const AdminDashboard = () => {
     loadSubmissions();
   }, [navigate]);
 
-  const loadSubmissions = () => {
-    setSubmissions(getSubmissions());
+  const loadSubmissions = async () => {
+    setIsLoading(true);
+    const data = await getSubmissions();
+    setSubmissions(data);
+    setIsLoading(false);
   };
 
   const handleLogout = () => {
@@ -37,14 +41,22 @@ const AdminDashboard = () => {
     navigate('/AdminLabubu');
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus data ini?')) {
-      deleteSubmission(id);
-      loadSubmissions();
-      toast({
-        title: "Data Dihapus",
-        description: "Data berhasil dihapus dari sistem.",
-      });
+      const success = await deleteSubmission(id);
+      if (success) {
+        await loadSubmissions();
+        toast({
+          title: "Data Dihapus",
+          description: "Data berhasil dihapus dari sistem.",
+        });
+      } else {
+        toast({
+          title: "Gagal Menghapus",
+          description: "Terjadi kesalahan saat menghapus data.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -53,16 +65,24 @@ const AdminDashboard = () => {
     setEditForm(submission);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (editingId && editForm) {
-      updateSubmission(editingId, editForm);
-      loadSubmissions();
-      setEditingId(null);
-      setEditForm({});
-      toast({
-        title: "Data Diperbarui",
-        description: "Perubahan berhasil disimpan.",
-      });
+      const result = await updateSubmission(editingId, editForm);
+      if (result) {
+        await loadSubmissions();
+        setEditingId(null);
+        setEditForm({});
+        toast({
+          title: "Data Diperbarui",
+          description: "Perubahan berhasil disimpan.",
+        });
+      } else {
+        toast({
+          title: "Gagal Memperbarui",
+          description: "Terjadi kesalahan saat memperbarui data.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -75,7 +95,7 @@ const AdminDashboard = () => {
     (s) =>
       s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.company.toLowerCase().includes(searchTerm.toLowerCase())
+      (s.company?.toLowerCase() || '').includes(searchTerm.toLowerCase())
   );
 
   const formatDate = (dateString: string) => {
@@ -103,10 +123,16 @@ const AdminDashboard = () => {
                 <span className="ml-2 text-sm text-muted-foreground">Admin Dashboard</span>
               </div>
             </div>
-            <Button variant="outline" size="sm" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Logout
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={loadSubmissions} disabled={isLoading}>
+                <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleLogout}>
+                <LogOut className="w-4 h-4 mr-2" />
+                Logout
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -149,7 +175,7 @@ const AdminDashboard = () => {
               <div>
                 <p className="text-3xl font-bold text-foreground">
                   {submissions.filter(
-                    (s) => new Date(s.createdAt).toDateString() === new Date().toDateString()
+                    (s) => new Date(s.created_at).toDateString() === new Date().toDateString()
                   ).length}
                 </p>
                 <p className="text-sm text-muted-foreground">Pengajuan Hari Ini</p>
@@ -175,7 +201,12 @@ const AdminDashboard = () => {
             </div>
           </CardHeader>
           <CardContent>
-            {filteredSubmissions.length === 0 ? (
+            {isLoading ? (
+              <div className="text-center py-12">
+                <RefreshCw className="w-8 h-8 text-muted-foreground mx-auto mb-4 animate-spin" />
+                <p className="text-muted-foreground">Memuat data...</p>
+              </div>
+            ) : filteredSubmissions.length === 0 ? (
               <div className="text-center py-12">
                 <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">
@@ -252,17 +283,17 @@ const AdminDashboard = () => {
                         <td className="py-4 px-4">
                           {editingId === submission.id ? (
                             <Input
-                              value={editForm.landSize || ''}
-                              onChange={(e) => setEditForm({ ...editForm, landSize: e.target.value })}
+                              value={editForm.land_size || ''}
+                              onChange={(e) => setEditForm({ ...editForm, land_size: e.target.value })}
                               className="h-8"
                             />
                           ) : (
-                            <span className="text-foreground">{submission.landSize || '-'}</span>
+                            <span className="text-foreground">{submission.land_size || '-'}</span>
                           )}
                         </td>
                         <td className="py-4 px-4">
                           <span className="text-sm text-muted-foreground">
-                            {formatDate(submission.createdAt)}
+                            {formatDate(submission.created_at)}
                           </span>
                         </td>
                         <td className="py-4 px-4">
@@ -331,7 +362,7 @@ const AdminDashboard = () => {
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium text-foreground">{submission.name}</span>
                       <span className="text-sm text-muted-foreground">
-                        {formatDate(submission.createdAt)}
+                        {formatDate(submission.created_at)}
                       </span>
                     </div>
                     <p className="text-muted-foreground">{submission.message}</p>

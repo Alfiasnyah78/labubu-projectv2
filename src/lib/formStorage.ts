@@ -1,49 +1,85 @@
+import { supabase } from "@/integrations/supabase/client";
+
 export interface FormSubmission {
   id: string;
   name: string;
   email: string;
   phone: string;
-  company: string;
+  company: string | null;
   service: string;
-  landSize: string;
-  message: string;
-  createdAt: string;
+  land_size: string | null;
+  message: string | null;
+  created_at: string;
 }
 
-const STORAGE_KEY = 'almondsense_submissions';
+export const getSubmissions = async (): Promise<FormSubmission[]> => {
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .select('*')
+    .order('created_at', { ascending: false });
 
-export const getSubmissions = (): FormSubmission[] => {
-  const data = localStorage.getItem(STORAGE_KEY);
-  return data ? JSON.parse(data) : [];
+  if (error) {
+    console.error('Error fetching submissions:', error);
+    return [];
+  }
+
+  return data || [];
 };
 
-export const addSubmission = (submission: Omit<FormSubmission, 'id' | 'createdAt'>): FormSubmission => {
-  const submissions = getSubmissions();
-  const newSubmission: FormSubmission = {
-    ...submission,
-    id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
-  };
-  submissions.push(newSubmission);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(submissions));
-  return newSubmission;
+export const addSubmission = async (
+  submission: Omit<FormSubmission, 'id' | 'created_at'>
+): Promise<FormSubmission | null> => {
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .insert({
+      name: submission.name,
+      email: submission.email,
+      phone: submission.phone,
+      company: submission.company || null,
+      service: submission.service,
+      land_size: submission.land_size || null,
+      message: submission.message || null,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error adding submission:', error);
+    return null;
+  }
+
+  return data;
 };
 
-export const updateSubmission = (id: string, updates: Partial<FormSubmission>): FormSubmission | null => {
-  const submissions = getSubmissions();
-  const index = submissions.findIndex(s => s.id === id);
-  if (index === -1) return null;
-  
-  submissions[index] = { ...submissions[index], ...updates };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(submissions));
-  return submissions[index];
+export const updateSubmission = async (
+  id: string,
+  updates: Partial<FormSubmission>
+): Promise<FormSubmission | null> => {
+  const { data, error } = await supabase
+    .from('form_submissions')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating submission:', error);
+    return null;
+  }
+
+  return data;
 };
 
-export const deleteSubmission = (id: string): boolean => {
-  const submissions = getSubmissions();
-  const filtered = submissions.filter(s => s.id !== id);
-  if (filtered.length === submissions.length) return false;
-  
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+export const deleteSubmission = async (id: string): Promise<boolean> => {
+  const { error } = await supabase
+    .from('form_submissions')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting submission:', error);
+    return false;
+  }
+
   return true;
 };

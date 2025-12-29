@@ -38,30 +38,38 @@ const ContactSection = () => {
     setIsSubmitting(true);
 
     try {
-      // Simulate network delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Save to localStorage
-      addSubmission(formData);
-      
-      setIsSubmitted(true);
-      toast({
-        title: "Berhasil Terkirim!",
-        description: "Tim kami akan menghubungi Anda dalam 1x24 jam.",
+      const result = await addSubmission({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        company: formData.company || null,
+        service: formData.service,
+        land_size: formData.landSize || null,
+        message: formData.message || null,
       });
+      
+      if (result) {
+        setIsSubmitted(true);
+        toast({
+          title: "Berhasil Terkirim!",
+          description: "Tim kami akan menghubungi Anda dalam 1x24 jam.",
+        });
 
-      // Reset form
-      setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        company: '',
-        service: '',
-        landSize: '',
-        message: '',
-      });
+        // Reset form
+        setFormData({
+          name: '',
+          email: '',
+          phone: '',
+          company: '',
+          service: '',
+          landSize: '',
+          message: '',
+        });
 
-      setTimeout(() => setIsSubmitted(false), 3000);
+        setTimeout(() => setIsSubmitted(false), 3000);
+      } else {
+        throw new Error('Failed to submit');
+      }
     } catch (error) {
       toast({
         title: "Gagal Mengirim",
