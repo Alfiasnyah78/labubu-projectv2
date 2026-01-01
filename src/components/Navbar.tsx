@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Menu, X, Leaf } from 'lucide-react';
+import { Menu, X, Leaf, User } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 
 const Navbar = () => {
@@ -46,6 +47,12 @@ const Navbar = () => {
                 {link.name}
               </button>
             ))}
+            <Link to="/pelanggan">
+              <Button variant="outline" size="sm">
+                <User className="w-4 h-4 mr-2" />
+                Login
+              </Button>
+            </Link>
             <Button variant="hero" size="sm" onClick={() => scrollToSection('#kontak')}>
               Mulai Sekarang
             </Button>
@@ -78,6 +85,12 @@ const Navbar = () => {
                   {link.name}
                 </button>
               ))}
+              <Link to="/pelanggan" className="w-full">
+                <Button variant="outline" className="w-full">
+                  <User className="w-4 h-4 mr-2" />
+                  Login Pelanggan
+                </Button>
+              </Link>
               <Button variant="hero" onClick={() => scrollToSection('#kontak')}>
                 Mulai Sekarang
               </Button>
