@@ -1,4 +1,4 @@
-import { ArrowRight, BarChart3, Wifi, CloudSun } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import heroBg from '@/assets/hero-bg.jpg';
 
@@ -53,36 +53,6 @@ const HeroSection = () => {
             </Button>
           </div>
 
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-4 mt-12 animate-fade-up" style={{ animationDelay: '0.4s' }}>
-            <div className="flex items-center gap-3 p-4 rounded-xl bg-card/80 backdrop-blur-sm border border-border/50">
-              <div className="w-12 h-12 rounded-lg bg-leaf/10 flex items-center justify-center">
-                <BarChart3 className="w-6 h-6 text-leaf" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">98%</p>
-                <p className="text-sm text-muted-foreground">Akurasi Data</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 p-4 rounded-xl bg-card/80 backdrop-blur-sm border border-border/50">
-              <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Wifi className="w-6 h-6 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">24/7</p>
-                <p className="text-sm text-muted-foreground">Monitoring</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 p-4 rounded-xl bg-card/80 backdrop-blur-sm border border-border/50">
-              <div className="w-12 h-12 rounded-lg bg-gold/10 flex items-center justify-center">
-                <CloudSun className="w-6 h-6 text-gold" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">500+</p>
-                <p className="text-sm text-muted-foreground">Hektar Terpantau</p>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
