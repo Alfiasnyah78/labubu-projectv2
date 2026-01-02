@@ -25,6 +25,7 @@ export type Database = {
           name: string
           phone: string
           service: string
+          status: Database["public"]["Enums"]["submission_status"]
         }
         Insert: {
           company?: string | null
@@ -36,6 +37,7 @@ export type Database = {
           name: string
           phone: string
           service: string
+          status?: Database["public"]["Enums"]["submission_status"]
         }
         Update: {
           company?: string | null
@@ -47,6 +49,7 @@ export type Database = {
           name?: string
           phone?: string
           service?: string
+          status?: Database["public"]["Enums"]["submission_status"]
         }
         Relationships: []
       }
@@ -116,6 +119,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "customer"
+      submission_status: "pending" | "negosiasi" | "success"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -244,6 +248,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "customer"],
+      submission_status: ["pending", "negosiasi", "success"],
     },
   },
 } as const

@@ -87,7 +87,44 @@ AlmondSense percaya bahwa data dapat membantu petani membuat keputusan yang lebi
 - **State Management**: TanStack Query
 - **Routing**: React Router
 - **Build Tool**: Vite
+- **Backend**: Supabase (Database, Auth, Edge Functions)
 - **Styling**: Tailwind CSS with custom design system
+
+---
+
+## 📚 Dokumentasi
+
+| Dokumen | Deskripsi |
+|---------|-----------|
+| [Panduan Integrasi Supabase](docs/integrasi_supabase.md) | Step-by-step setup Supabase |
+| [Panduan Deployment](docs/deploy.md) | Deploy ke Vercel, Docker, CI/CD |
+
+---
+
+## 🔄 CI/CD Pipeline
+
+Project ini menggunakan GitHub Actions untuk otomatisasi:
+
+### Workflows
+
+| Workflow | Trigger | Fungsi |
+|----------|---------|--------|
+| `ci.yml` | Push/PR ke main | Lint, type check, build |
+| `deploy-vercel.yml` | Push ke main | Deploy ke Vercel |
+| `deploy-docker.yml` | Push/Tag | Build & push Docker image |
+
+### Quick Start CI/CD
+
+```bash
+# Push ke main untuk trigger deployment
+git push origin main
+
+# Buat tag untuk release
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Lihat [Panduan Deployment](docs/deploy.md) untuk detail lebih lanjut.
 
 ---
 
@@ -107,7 +144,10 @@ http://localhost:7903
 
 ```bash
 # Build image
-docker build -t almondsense .
+docker build -t almondsense \
+  --build-arg VITE_SUPABASE_URL=https://xxx.supabase.co \
+  --build-arg VITE_SUPABASE_PUBLISHABLE_KEY=eyJxxx... \
+  .
 
 # Jalankan container
 docker run -d -p 7903:7903 --name almondsense-app almondsense
@@ -118,38 +158,83 @@ docker run -d -p 7903:7903 --name almondsense-app almondsense
 ## 📁 Struktur Proyek
 
 ```
-src/
-├── assets/           # Gambar & asset
-│   └── team/         # Foto tim
-├── components/       # Komponen React
-│   ├── ui/           # Komponen UI (Shadcn)
-│   ├── Navbar.tsx
-│   ├── HeroSection.tsx
-│   ├── AboutSection.tsx
-│   ├── ServicesSection.tsx
-│   ├── TeamSection.tsx
-│   ├── ContactSection.tsx
-│   └── Footer.tsx
-├── lib/              # Utilities
-│   ├── utils.ts
-│   └── formStorage.ts
-├── pages/            # Halaman
-│   ├── Index.tsx
-│   ├── AdminLogin.tsx
-│   ├── AdminDashboard.tsx
-│   └── NotFound.tsx
-└── hooks/            # Custom hooks
+├── .github/
+│   └── workflows/        # GitHub Actions CI/CD
+│       ├── ci.yml
+│       ├── deploy-vercel.yml
+│       └── deploy-docker.yml
+├── docs/
+│   ├── integrasi_supabase.md
+│   └── deploy.md
+├── src/
+│   ├── assets/           # Gambar & asset
+│   │   └── team/         # Foto tim
+│   ├── components/       # Komponen React
+│   │   ├── ui/           # Komponen UI (Shadcn)
+│   │   ├── Navbar.tsx
+│   │   ├── HeroSection.tsx
+│   │   ├── AboutSection.tsx
+│   │   ├── ServicesSection.tsx
+│   │   ├── TeamSection.tsx
+│   │   ├── ContactSection.tsx
+│   │   └── Footer.tsx
+│   ├── integrations/     # Integrasi external
+│   │   └── supabase/     # Supabase client & types
+│   ├── lib/              # Utilities
+│   │   ├── utils.ts
+│   │   └── formStorage.ts
+│   ├── pages/            # Halaman
+│   │   ├── Index.tsx
+│   │   ├── Auth.tsx
+│   │   ├── CustomerDashboard.tsx
+│   │   ├── AdminLogin.tsx
+│   │   ├── AdminDashboard.tsx
+│   │   └── NotFound.tsx
+│   └── hooks/            # Custom hooks
+├── supabase/
+│   └── config.toml       # Supabase configuration
+├── Dockerfile
+├── docker-compose.yml
+├── vercel.json
+└── README.md
 ```
 
 ---
 
 ## 🔐 Admin Dashboard
 
-Dashboard admin tersedia untuk mengelola pengajuan layanan dari pelanggan.
+Dashboard admin tersedia untuk mengelola pengajuan layanan dan users.
 
 - **URL**: `/AdminLabubu`
-- Fitur: View, Edit, Delete pengajuan
-- Statistik: Total pengajuan, calon pelanggan, pengajuan hari ini
+- **Fitur Pengajuan**:
+  - View, Edit, Delete pengajuan
+  - Status tracking (Pending, Negosiasi, Success)
+  - Statistik pengajuan
+- **Fitur User Management**:
+  - View semua users terdaftar
+  - Edit profile users
+  - Delete users
+
+---
+
+## 👤 Customer Portal
+
+Portal pelanggan untuk tracking layanan yang diajukan.
+
+- **URL**: `/pelanggan`
+- **Fitur**:
+  - Register & Login
+  - Lihat status pengajuan
+  - Update profile
+
+---
+
+## 🔧 Environment Variables
+
+| Variable | Required | Deskripsi |
+|----------|----------|-----------|
+| `VITE_SUPABASE_URL` | ✅ | URL Supabase project |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | ✅ | Anon public key |
 
 ---
 

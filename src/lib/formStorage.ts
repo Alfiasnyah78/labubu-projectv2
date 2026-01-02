@@ -1,5 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export type SubmissionStatus = 'pending' | 'negosiasi' | 'success';
+
 export interface FormSubmission {
   id: string;
   name: string;
@@ -9,9 +11,69 @@ export interface FormSubmission {
   service: string;
   land_size: string | null;
   message: string | null;
+  status: SubmissionStatus;
   created_at: string;
 }
 
+export interface UserProfile {
+  id: string;
+  user_id: string;
+  full_name: string;
+  phone: string | null;
+  company: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// User management functions
+export const getProfiles = async (): Promise<UserProfile[]> => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching profiles:', error);
+    return [];
+  }
+
+  return data || [];
+};
+
+export const updateProfile = async (
+  id: string,
+  updates: Partial<UserProfile>
+): Promise<UserProfile | null> => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating profile:', error);
+    return null;
+  }
+
+  return data;
+};
+
+export const deleteProfile = async (id: string): Promise<boolean> => {
+  const { error } = await supabase
+    .from('profiles')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting profile:', error);
+    return false;
+  }
+
+  return true;
+};
+
+// Submissions functions
 export const getSubmissions = async (): Promise<FormSubmission[]> => {
   const { data, error } = await supabase
     .from('form_submissions')
@@ -23,11 +85,11 @@ export const getSubmissions = async (): Promise<FormSubmission[]> => {
     return [];
   }
 
-  return data || [];
+  return (data || []) as FormSubmission[];
 };
 
 export const addSubmission = async (
-  submission: Omit<FormSubmission, 'id' | 'created_at'>
+  submission: Omit<FormSubmission, 'id' | 'created_at' | 'status'>
 ): Promise<FormSubmission | null> => {
   const { data, error } = await supabase
     .from('form_submissions')
@@ -48,7 +110,7 @@ export const addSubmission = async (
     return null;
   }
 
-  return data;
+  return data as FormSubmission;
 };
 
 export const updateSubmission = async (
@@ -67,7 +129,7 @@ export const updateSubmission = async (
     return null;
   }
 
-  return data;
+  return data as FormSubmission;
 };
 
 export const deleteSubmission = async (id: string): Promise<boolean> => {
@@ -83,3 +145,5 @@ export const deleteSubmission = async (id: string): Promise<boolean> => {
 
   return true;
 };
+
+
