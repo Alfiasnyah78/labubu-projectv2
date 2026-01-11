@@ -26,6 +26,7 @@ interface ContactFormRequest {
   service: string;
   message?: string;
   landSize?: string;
+  adminEmail?: string; // Email admin untuk notifikasi
 }
 
 interface StatusUpdateRequest {
@@ -95,16 +96,32 @@ const handler = async (req: Request): Promise<Response> => {
         case "contact":
           // Send confirmation to customer
           emailData = {
-            from: "PT Berkah Jaya Kontraktor <onboarding@resend.dev>",
+            from: "AlmondSense <onboarding@resend.dev>",
             to: body.email,
             subject: `Terima Kasih atas Pengajuan Anda - ${body.service}`,
             html: generateContactConfirmationEmail(body),
           };
+
+          // Also send notification to admin if adminEmail is provided
+          if (body.adminEmail) {
+            try {
+              await sendEmailWithResend({
+                from: "AlmondSense <onboarding@resend.dev>",
+                to: body.adminEmail,
+                subject: `[Pengajuan Baru] ${body.service} - ${body.name}`,
+                html: generateAdminNotificationEmail(body),
+              });
+              console.log("Admin notification email sent to:", body.adminEmail);
+            } catch (adminError) {
+              console.error("Failed to send admin notification:", adminError);
+              // Don't fail the whole request if admin email fails
+            }
+          }
           break;
 
         case "status_update":
           emailData = {
-            from: "PT Berkah Jaya Kontraktor <onboarding@resend.dev>",
+            from: "AlmondSense <onboarding@resend.dev>",
             to: body.email,
             subject: `Update Status Pengajuan - ${body.service}`,
             html: generateStatusUpdateEmail(body),
@@ -113,9 +130,9 @@ const handler = async (req: Request): Promise<Response> => {
 
         case "welcome":
           emailData = {
-            from: "PT Berkah Jaya Kontraktor <onboarding@resend.dev>",
+            from: "AlmondSense <onboarding@resend.dev>",
             to: body.email,
-            subject: "Selamat Datang di PT Berkah Jaya Kontraktor",
+            subject: "Selamat Datang di AlmondSense",
             html: generateWelcomeEmail(body),
           };
           break;
@@ -126,7 +143,7 @@ const handler = async (req: Request): Promise<Response> => {
     } else {
       // Generic email
       emailData = {
-        from: body.from || "PT Berkah Jaya Kontraktor <onboarding@resend.dev>",
+        from: body.from || "AlmondSense <onboarding@resend.dev>",
         to: body.to,
         subject: body.subject,
         html: body.html || body.text || "",
@@ -156,6 +173,87 @@ const handler = async (req: Request): Promise<Response> => {
   }
 };
 
+function generateAdminNotificationEmail(data: ContactFormRequest): string {
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pengajuan Baru</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f4;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 40px 0;">
+        <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+          <tr>
+            <td style="background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%); padding: 30px; border-radius: 8px 8px 0 0;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 24px; text-align: center;">🔔 Pengajuan Baru Masuk!</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 40px 30px;">
+              <div style="background-color: #fef3c7; border-left: 4px solid #d97706; padding: 20px; margin-bottom: 20px; border-radius: 0 4px 4px 0;">
+                <h3 style="color: #92400e; margin: 0 0 15px 0; font-size: 16px;">📋 Detail Pengajuan:</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding: 8px 0; color: #666; width: 140px; font-weight: bold;">Nama:</td>
+                    <td style="padding: 8px 0; color: #333;">${data.name}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Email:</td>
+                    <td style="padding: 8px 0; color: #333;"><a href="mailto:${data.email}">${data.email}</a></td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Telepon:</td>
+                    <td style="padding: 8px 0; color: #333;"><a href="tel:${data.phone}">${data.phone}</a></td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Layanan:</td>
+                    <td style="padding: 8px 0; color: #333; font-weight: 500;">${data.service}</td>
+                  </tr>
+                  ${data.company ? `
+                  <tr>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Perusahaan:</td>
+                    <td style="padding: 8px 0; color: #333;">${data.company}</td>
+                  </tr>
+                  ` : ''}
+                  ${data.landSize ? `
+                  <tr>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold;">Luas Lahan:</td>
+                    <td style="padding: 8px 0; color: #333;">${data.landSize}</td>
+                  </tr>
+                  ` : ''}
+                  ${data.message ? `
+                  <tr>
+                    <td style="padding: 8px 0; color: #666; font-weight: bold; vertical-align: top;">Pesan:</td>
+                    <td style="padding: 8px 0; color: #333;">${data.message}</td>
+                  </tr>
+                  ` : ''}
+                </table>
+              </div>
+              <p style="color: #666; font-size: 14px; margin: 20px 0 0 0;">
+                Silakan tindak lanjuti pengajuan ini secepatnya.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #f8f9fa; padding: 20px; border-radius: 0 0 8px 8px; border-top: 1px solid #eee; text-align: center;">
+              <p style="color: #999; margin: 0; font-size: 12px;">
+                Email ini dikirim otomatis dari sistem AlmondSense.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
+
 function generateContactConfirmationEmail(data: ContactFormRequest): string {
   return `
 <!DOCTYPE html>
@@ -173,8 +271,8 @@ function generateContactConfirmationEmail(data: ContactFormRequest): string {
           <!-- Header -->
           <tr>
             <td style="background: linear-gradient(135deg, #1a5f2a 0%, #2d8a3e 100%); padding: 30px; border-radius: 8px 8px 0 0;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 24px; text-align: center;">PT Berkah Jaya Kontraktor</h1>
-              <p style="color: #c8e6c9; margin: 10px 0 0 0; text-align: center; font-size: 14px;">Solusi Konstruksi Terpercaya</p>
+              <h1 style="color: #ffffff; margin: 0; font-size: 24px; text-align: center;">AlmondSense</h1>
+              <p style="color: #c8e6c9; margin: 10px 0 0 0; text-align: center; font-size: 14px;">Pertanian Digital Cerdas</p>
             </td>
           </tr>
           
