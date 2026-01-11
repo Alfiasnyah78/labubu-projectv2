@@ -82,10 +82,11 @@ const CustomerDashboard = () => {
     if (!user) return;
     
     setIsLoading(true);
+    // Query by user_id for proper data isolation
     const { data, error } = await supabase
       .from('form_submissions')
       .select('*')
-      .eq('email', user.email)
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
     if (!error && data) {
