@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   getSubmissions, 
   deleteSubmission, 
@@ -49,15 +50,64 @@ const AdminDashboard = () => {
   const [editUserForm, setEditUserForm] = useState<Partial<UserProfile>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('submissions');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    const isAuthenticated = sessionStorage.getItem('admin_authenticated');
-    if (!isAuthenticated) {
-      navigate('/AdminLabubu');
-      return;
-    }
-    loadData();
-  }, [navigate]);
+    const checkAuth = async () => {
+      try {
+        // Get current session from Supabase
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          navigate('/AdminLabubu');
+          return;
+        }
+
+        // Check if user has admin role using the has_role function or direct query
+        const { data: roles, error: rolesError } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', session.user.id);
+
+        if (rolesError) {
+          console.error('Error checking roles:', rolesError);
+          navigate('/AdminLabubu');
+          return;
+        }
+
+        const hasAdminRole = roles?.some(r => r.role === 'admin');
+
+        if (!hasAdminRole) {
+          toast({
+            title: "Akses Ditolak",
+            description: "Anda tidak memiliki akses admin.",
+            variant: "destructive",
+          });
+          await supabase.auth.signOut();
+          navigate('/AdminLabubu');
+          return;
+        }
+
+        setIsAuthenticated(true);
+        loadData();
+      } catch (error) {
+        console.error('Auth check error:', error);
+        navigate('/AdminLabubu');
+      }
+    };
+
+    checkAuth();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        setIsAuthenticated(false);
+        navigate('/AdminLabubu');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate, toast]);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -70,8 +120,8 @@ const AdminDashboard = () => {
     setIsLoading(false);
   };
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('admin_authenticated');
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     toast({
       title: "Logout Berhasil",
       description: "Anda telah keluar dari dashboard.",
@@ -221,6 +271,18 @@ const AdminDashboard = () => {
     negosiasi: submissions.filter(s => s.status === 'negosiasi').length,
     success: submissions.filter(s => s.status === 'success').length,
   };
+
+  // Don't render until authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted/30">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 text-muted-foreground mx-auto mb-4 animate-spin" />
+          <p className="text-muted-foreground">Memverifikasi akses...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -435,7 +497,7 @@ const AdminDashboard = () => {
                                   <select
                                     value={submission.status}
                                     onChange={(e) => handleStatusChange(submission.id, e.target.value as SubmissionStatus)}
-                                    className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${statusConfig[submission.status].color} border-0 cursor-pointer`}
+                                    className={`px-2 py-1 rounded-full text-xs font-medium cursor-pointer ${statusConfig[submission.status].color}`}
                                   >
                                     <option value="pending">Pending</option>
                                     <option value="negosiasi">Negosiasi</option>
@@ -445,90 +507,87 @@ const AdminDashboard = () => {
                               )}
                             </td>
                             <td className="py-4 px-4">
-                              <span className="text-sm text-muted-foreground">
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Calendar className="w-4 h-4" />
                                 {formatDate(submission.created_at)}
-                              </span>
+                              </div>
                             </td>
                             <td className="py-4 px-4">
-                              <div className="flex gap-2">
-                                {editingId === submission.id ? (
-                                  <>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={handleSaveEdit}
-                                      className="h-8 w-8 text-leaf hover:text-leaf"
-                                    >
-                                      <Check className="w-4 h-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={handleCancelEdit}
-                                      className="h-8 w-8 text-muted-foreground"
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => handleEdit(submission)}
-                                      className="h-8 w-8 text-primary hover:text-primary"
-                                    >
-                                      <Edit2 className="w-4 h-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => handleDelete(submission.id)}
-                                      className="h-8 w-8 text-destructive hover:text-destructive"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                  </>
-                                )}
-                              </div>
+                              {editingId === submission.id ? (
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleSaveEdit}
+                                    className="text-green-600 hover:text-green-700"
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleCancelEdit}
+                                    className="text-gray-600 hover:text-gray-700"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEdit(submission)}
+                                    className="text-blue-600 hover:text-blue-700"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDelete(submission.id)}
+                                    className="text-red-600 hover:text-red-700"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+
+                    {/* Message display */}
+                    {filteredSubmissions.some(s => s.message) && (
+                      <div className="mt-6 space-y-4">
+                        <h3 className="font-semibold text-foreground flex items-center gap-2">
+                          <MessageSquare className="w-5 h-5" />
+                          Pesan dari Pelanggan
+                        </h3>
+                        {filteredSubmissions.filter(s => s.message).map((submission) => (
+                          <div
+                            key={`msg-${submission.id}`}
+                            className="bg-muted/50 rounded-lg p-4 border border-border"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <p className="font-medium text-foreground">{submission.name}</p>
+                                <p className="text-sm text-muted-foreground">{submission.email}</p>
+                              </div>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusConfig[submission.status].color}`}>
+                                {statusConfig[submission.status].label}
+                              </span>
+                            </div>
+                            <p className="mt-3 text-foreground whitespace-pre-wrap">{submission.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
             </Card>
-
-            {/* Message Details */}
-            {filteredSubmissions.some((s) => s.message) && (
-              <Card variant="default" className="mt-8">
-                <CardHeader>
-                  <CardTitle className="text-foreground">Pesan Pelanggan</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {filteredSubmissions
-                    .filter((s) => s.message)
-                    .map((submission) => (
-                      <div key={submission.id} className="p-4 rounded-lg bg-muted/50 border border-border">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium text-foreground">{submission.name}</span>
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusConfig[submission.status].color}`}>
-                              {statusConfig[submission.status].label}
-                            </span>
-                            <span className="text-sm text-muted-foreground">
-                              {formatDate(submission.created_at)}
-                            </span>
-                          </div>
-                        </div>
-                        <p className="text-muted-foreground">{submission.message}</p>
-                      </div>
-                    ))}
-                </CardContent>
-              </Card>
-            )}
           </TabsContent>
 
           {/* Users Tab */}
@@ -536,7 +595,7 @@ const AdminDashboard = () => {
             <Card variant="elevated">
               <CardHeader>
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <CardTitle className="text-foreground">Kelola Users</CardTitle>
+                  <CardTitle className="text-foreground">Data User Terdaftar</CardTitle>
                   <div className="relative w-full md:w-64">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
@@ -567,9 +626,9 @@ const AdminDashboard = () => {
                       <thead>
                         <tr className="border-b border-border">
                           <th className="text-left py-3 px-4 font-semibold text-foreground">Nama</th>
-                          <th className="text-left py-3 px-4 font-semibold text-foreground">Telepon</th>
                           <th className="text-left py-3 px-4 font-semibold text-foreground">Perusahaan</th>
-                          <th className="text-left py-3 px-4 font-semibold text-foreground">Terdaftar</th>
+                          <th className="text-left py-3 px-4 font-semibold text-foreground">Telepon</th>
+                          <th className="text-left py-3 px-4 font-semibold text-foreground">Bergabung</th>
                           <th className="text-left py-3 px-4 font-semibold text-foreground">Aksi</th>
                         </tr>
                       </thead>
@@ -587,18 +646,7 @@ const AdminDashboard = () => {
                                   className="h-8"
                                 />
                               ) : (
-                                <p className="font-medium text-foreground">{profile.full_name || '-'}</p>
-                              )}
-                            </td>
-                            <td className="py-4 px-4">
-                              {editingUserId === profile.id ? (
-                                <Input
-                                  value={editUserForm.phone || ''}
-                                  onChange={(e) => setEditUserForm({ ...editUserForm, phone: e.target.value })}
-                                  className="h-8"
-                                />
-                              ) : (
-                                <p className="text-foreground">{profile.phone || '-'}</p>
+                                <p className="font-medium text-foreground">{profile.full_name}</p>
                               )}
                             </td>
                             <td className="py-4 px-4">
@@ -613,52 +661,62 @@ const AdminDashboard = () => {
                               )}
                             </td>
                             <td className="py-4 px-4">
-                              <span className="text-sm text-muted-foreground">
-                                {formatDate(profile.created_at)}
-                              </span>
+                              {editingUserId === profile.id ? (
+                                <Input
+                                  value={editUserForm.phone || ''}
+                                  onChange={(e) => setEditUserForm({ ...editUserForm, phone: e.target.value })}
+                                  className="h-8"
+                                />
+                              ) : (
+                                <p className="text-foreground">{profile.phone || '-'}</p>
+                              )}
                             </td>
                             <td className="py-4 px-4">
-                              <div className="flex gap-2">
-                                {editingUserId === profile.id ? (
-                                  <>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={handleSaveUserEdit}
-                                      className="h-8 w-8 text-leaf hover:text-leaf"
-                                    >
-                                      <Check className="w-4 h-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={handleCancelUserEdit}
-                                      className="h-8 w-8 text-muted-foreground"
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => handleEditUser(profile)}
-                                      className="h-8 w-8 text-primary hover:text-primary"
-                                    >
-                                      <Edit2 className="w-4 h-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => handleDeleteUser(profile.id)}
-                                      className="h-8 w-8 text-destructive hover:text-destructive"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                  </>
-                                )}
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Calendar className="w-4 h-4" />
+                                {formatDate(profile.created_at)}
                               </div>
+                            </td>
+                            <td className="py-4 px-4">
+                              {editingUserId === profile.id ? (
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleSaveUserEdit}
+                                    className="text-green-600 hover:text-green-700"
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleCancelUserEdit}
+                                    className="text-gray-600 hover:text-gray-700"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditUser(profile)}
+                                    className="text-blue-600 hover:text-blue-700"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteUser(profile.id)}
+                                    className="text-red-600 hover:text-red-700"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         ))}
