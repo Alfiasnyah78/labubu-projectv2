@@ -5,6 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { addSubmission } from '@/lib/formStorage';
+import { supabase } from '@/integrations/supabase/client';
+
+const ADMIN_EMAIL = "admin@labubu.my.id";
 
 const ContactSection = () => {
   const { toast } = useToast();
@@ -49,6 +52,30 @@ const ContactSection = () => {
       });
       
       if (result) {
+        // Send email notification
+        try {
+          const { error: emailError } = await supabase.functions.invoke('send-email', {
+            body: {
+              type: 'contact',
+              name: formData.name,
+              email: formData.email,
+              phone: formData.phone,
+              company: formData.company || undefined,
+              service: formData.service,
+              landSize: formData.landSize || undefined,
+              message: formData.message || undefined,
+              adminEmail: ADMIN_EMAIL,
+            },
+          });
+
+          if (emailError) {
+            console.error('Email notification error:', emailError);
+          }
+        } catch (emailErr) {
+          console.error('Failed to send email:', emailErr);
+          // Don't fail the submission if email fails
+        }
+
         setIsSubmitted(true);
         toast({
           title: "Berhasil Terkirim!",
