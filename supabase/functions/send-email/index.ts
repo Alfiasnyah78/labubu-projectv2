@@ -8,6 +8,39 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Rate limiting using in-memory storage (resets on function cold start)
+const rateLimitMap = new Map<string, { count: number; timestamp: number }>();
+const RATE_LIMIT_WINDOW = 60 * 60 * 1000; // 1 hour in milliseconds
+const RATE_LIMIT_MAX = 10; // Max 10 emails per hour per IP
+
+// HTML escape function to prevent XSS/injection attacks
+function escapeHtml(unsafe: string | undefined | null): string {
+  if (!unsafe) return '';
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// Validation helpers
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email) && email.length <= 255;
+}
+
+function isValidPhone(phone: string): boolean {
+  // Allow digits, spaces, dashes, parentheses, and plus sign
+  const phoneRegex = /^[\d\s\-\+\(\)]{6,20}$/;
+  return phoneRegex.test(phone);
+}
+
+function validateLength(value: string | undefined | null, maxLength: number): boolean {
+  if (!value) return true;
+  return value.length <= maxLength;
+}
+
 interface EmailRequest {
   to: string | string[];
   subject: string;
@@ -26,7 +59,7 @@ interface ContactFormRequest {
   service: string;
   message?: string;
   landSize?: string;
-  adminEmail?: string; // Email admin untuk notifikasi
+  adminEmail?: string;
 }
 
 interface StatusUpdateRequest {
@@ -45,6 +78,66 @@ interface WelcomeEmailRequest {
 }
 
 type RequestBody = EmailRequest | ContactFormRequest | StatusUpdateRequest | WelcomeEmailRequest;
+
+// Sanitize contact form data
+function sanitizeContactData(data: ContactFormRequest): ContactFormRequest {
+  return {
+    ...data,
+    name: escapeHtml(data.name),
+    email: escapeHtml(data.email),
+    phone: escapeHtml(data.phone),
+    company: data.company ? escapeHtml(data.company) : undefined,
+    service: escapeHtml(data.service),
+    message: data.message ? escapeHtml(data.message) : undefined,
+    landSize: data.landSize ? escapeHtml(data.landSize) : undefined,
+    adminEmail: data.adminEmail ? escapeHtml(data.adminEmail) : undefined,
+  };
+}
+
+// Sanitize status update data
+function sanitizeStatusData(data: StatusUpdateRequest): StatusUpdateRequest {
+  return {
+    ...data,
+    name: escapeHtml(data.name),
+    email: escapeHtml(data.email),
+    service: escapeHtml(data.service),
+    oldStatus: escapeHtml(data.oldStatus),
+    newStatus: escapeHtml(data.newStatus),
+  };
+}
+
+// Sanitize welcome email data
+function sanitizeWelcomeData(data: WelcomeEmailRequest): WelcomeEmailRequest {
+  return {
+    ...data,
+    name: escapeHtml(data.name),
+    email: escapeHtml(data.email),
+  };
+}
+
+function checkRateLimit(clientIp: string): boolean {
+  const now = Date.now();
+  const record = rateLimitMap.get(clientIp);
+  
+  // Clean up old entries
+  if (record && now - record.timestamp > RATE_LIMIT_WINDOW) {
+    rateLimitMap.delete(clientIp);
+  }
+  
+  const currentRecord = rateLimitMap.get(clientIp);
+  
+  if (!currentRecord) {
+    rateLimitMap.set(clientIp, { count: 1, timestamp: now });
+    return true;
+  }
+  
+  if (currentRecord.count >= RATE_LIMIT_MAX) {
+    return false;
+  }
+  
+  currentRecord.count++;
+  return true;
+}
 
 async function sendEmailWithResend(emailData: {
   from: string;
@@ -78,9 +171,26 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Get client IP for rate limiting
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+                   req.headers.get("cf-connecting-ip") || 
+                   "unknown";
+
+  // Check rate limit
+  if (!checkRateLimit(clientIp)) {
+    console.log(`Rate limit exceeded for IP: ${clientIp}`);
+    return new Response(
+      JSON.stringify({ success: false, error: "Too many requests. Please try again later." }),
+      {
+        status: 429,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      }
+    );
+  }
+
   try {
     const body: RequestBody = await req.json();
-    console.log("Request body:", JSON.stringify(body, null, 2));
+    console.log("Request type:", "type" in body ? body.type : "generic");
 
     let emailData: {
       from: string;
@@ -93,78 +203,165 @@ const handler = async (req: Request): Promise<Response> => {
     // Determine email type and build email data
     if ("type" in body) {
       switch (body.type) {
-        case "contact":
+        case "contact": {
+          // Validate required fields
+          if (!body.name || !body.email || !body.phone || !body.service) {
+            throw new Error("Missing required fields: name, email, phone, service");
+          }
+
+          // Validate email format
+          if (!isValidEmail(body.email)) {
+            throw new Error("Invalid email format");
+          }
+
+          // Validate phone format
+          if (!isValidPhone(body.phone)) {
+            throw new Error("Invalid phone format");
+          }
+
+          // Validate length limits
+          if (!validateLength(body.name, 200)) {
+            throw new Error("Name too long (max 200 characters)");
+          }
+          if (!validateLength(body.company, 200)) {
+            throw new Error("Company name too long (max 200 characters)");
+          }
+          if (!validateLength(body.message, 5000)) {
+            throw new Error("Message too long (max 5000 characters)");
+          }
+          if (!validateLength(body.service, 100)) {
+            throw new Error("Service name too long (max 100 characters)");
+          }
+          if (!validateLength(body.landSize, 100)) {
+            throw new Error("Land size too long (max 100 characters)");
+          }
+
+          // Sanitize all input data
+          const sanitizedData = sanitizeContactData(body);
+
           // Send confirmation to customer
           emailData = {
             from: "AlmondSense <onboarding@resend.dev>",
-            to: body.email,
-            subject: `Terima Kasih atas Pengajuan Anda - ${body.service}`,
-            html: generateContactConfirmationEmail(body),
+            to: body.email, // Use original email for sending
+            subject: `Terima Kasih atas Pengajuan Anda - ${sanitizedData.service}`,
+            html: generateContactConfirmationEmail(sanitizedData),
           };
 
           // Also send notification to admin if adminEmail is provided
-          if (body.adminEmail) {
+          if (body.adminEmail && isValidEmail(body.adminEmail)) {
             try {
               await sendEmailWithResend({
                 from: "AlmondSense <onboarding@resend.dev>",
                 to: body.adminEmail,
-                subject: `[Pengajuan Baru] ${body.service} - ${body.name}`,
-                html: generateAdminNotificationEmail(body),
+                subject: `[Pengajuan Baru] ${sanitizedData.service} - ${sanitizedData.name}`,
+                html: generateAdminNotificationEmail(sanitizedData),
               });
-              console.log("Admin notification email sent to:", body.adminEmail);
+              console.log("Admin notification email sent");
             } catch (adminError) {
               console.error("Failed to send admin notification:", adminError);
               // Don't fail the whole request if admin email fails
             }
           }
           break;
+        }
 
-        case "status_update":
+        case "status_update": {
+          // Validate required fields
+          if (!body.name || !body.email || !body.service || !body.newStatus) {
+            throw new Error("Missing required fields for status update");
+          }
+
+          // Validate email format
+          if (!isValidEmail(body.email)) {
+            throw new Error("Invalid email format");
+          }
+
+          // Validate length limits
+          if (!validateLength(body.name, 200)) {
+            throw new Error("Name too long (max 200 characters)");
+          }
+
+          // Sanitize data
+          const sanitizedStatusData = sanitizeStatusData(body);
+
           emailData = {
             from: "AlmondSense <onboarding@resend.dev>",
             to: body.email,
-            subject: `Update Status Pengajuan - ${body.service}`,
-            html: generateStatusUpdateEmail(body),
+            subject: `Update Status Pengajuan - ${sanitizedStatusData.service}`,
+            html: generateStatusUpdateEmail(sanitizedStatusData),
           };
           break;
+        }
 
-        case "welcome":
+        case "welcome": {
+          // Validate required fields
+          if (!body.name || !body.email) {
+            throw new Error("Missing required fields for welcome email");
+          }
+
+          // Validate email format
+          if (!isValidEmail(body.email)) {
+            throw new Error("Invalid email format");
+          }
+
+          // Validate length limits
+          if (!validateLength(body.name, 200)) {
+            throw new Error("Name too long (max 200 characters)");
+          }
+
+          // Sanitize data
+          const sanitizedWelcomeData = sanitizeWelcomeData(body);
+
           emailData = {
             from: "AlmondSense <onboarding@resend.dev>",
             to: body.email,
             subject: "Selamat Datang di AlmondSense",
-            html: generateWelcomeEmail(body),
+            html: generateWelcomeEmail(sanitizedWelcomeData),
           };
           break;
+        }
 
         default:
           throw new Error("Invalid email type");
       }
     } else {
-      // Generic email
+      // Generic email - requires authentication for security
+      // For now, just validate the inputs
+      if (!body.to || !body.subject) {
+        throw new Error("Missing required fields: to, subject");
+      }
+
+      const toEmails = Array.isArray(body.to) ? body.to : [body.to];
+      for (const email of toEmails) {
+        if (!isValidEmail(email)) {
+          throw new Error(`Invalid email format: ${email}`);
+        }
+      }
+
       emailData = {
         from: body.from || "AlmondSense <onboarding@resend.dev>",
         to: body.to,
-        subject: body.subject,
-        html: body.html || body.text || "",
+        subject: escapeHtml(body.subject),
+        html: body.html || escapeHtml(body.text) || "",
         reply_to: body.replyTo,
       };
     }
 
-    console.log("Sending email to:", emailData.to);
+    console.log("Sending email to:", Array.isArray(emailData.to) ? emailData.to.join(", ") : emailData.to);
 
     const emailResponse = await sendEmailWithResend(emailData);
 
-    console.log("Email sent successfully:", emailResponse);
+    console.log("Email sent successfully");
 
     return new Response(JSON.stringify({ success: true, data: emailResponse }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
-  } catch (error: any) {
-    console.error("Error in send-email function:", error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("Error in send-email function:", errorMessage);
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: errorMessage }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -203,11 +400,11 @@ function generateAdminNotificationEmail(data: ContactFormRequest): string {
                   </tr>
                   <tr>
                     <td style="padding: 8px 0; color: #666; font-weight: bold;">Email:</td>
-                    <td style="padding: 8px 0; color: #333;"><a href="mailto:${data.email}">${data.email}</a></td>
+                    <td style="padding: 8px 0; color: #333;">${data.email}</td>
                   </tr>
                   <tr>
                     <td style="padding: 8px 0; color: #666; font-weight: bold;">Telepon:</td>
-                    <td style="padding: 8px 0; color: #333;"><a href="tel:${data.phone}">${data.phone}</a></td>
+                    <td style="padding: 8px 0; color: #333;">${data.phone}</td>
                   </tr>
                   <tr>
                     <td style="padding: 8px 0; color: #666; font-weight: bold;">Layanan:</td>
@@ -471,9 +668,9 @@ function generateWelcomeEmail(data: WelcomeEmailRequest): string {
               <div style="background-color: #f8f9fa; padding: 25px; border-radius: 8px; margin: 25px 0;">
                 <h3 style="color: #1a5f2a; margin: 0 0 15px 0; font-size: 16px;">🏗️ Layanan Kami:</h3>
                 <ul style="color: #555; line-height: 2; margin: 0; padding-left: 20px;">
-                  <li>Pematangan Lahan & Land Clearing</li>
-                  <li>Galian Tanah & Urugan</li>
-                  <li>Pembangunan Jalan & Drainase</li>
+                  <li>Pematangan Lahan &amp; Land Clearing</li>
+                  <li>Galian Tanah &amp; Urugan</li>
+                  <li>Pembangunan Jalan &amp; Drainase</li>
                   <li>Konstruksi Bangunan Komersial</li>
                 </ul>
               </div>

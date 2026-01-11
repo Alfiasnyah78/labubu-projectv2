@@ -1,13 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, User, Leaf, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, Leaf, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { z } from 'zod';
 
-const ADMIN_USERNAME = 'Labuubu';
-const ADMIN_PASSWORD = 'Hua736%@7hGya23';
+// Validation schema for login
+const loginSchema = z.object({
+  email: z.string().trim().email({ message: "Format email tidak valid" }).max(255),
+  password: z.string().min(6, { message: "Password minimal 6 karakter" }).max(128),
+});
 
 const AdminLogin = () => {
   const navigate = useNavigate();
@@ -15,27 +20,113 @@ const AdminLogin = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [credentials, setCredentials] = useState({
-    username: '',
+    email: '',
     password: '',
   });
+
+  // Check if already logged in as admin
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        // Check admin role
+        const { data: roles } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', session.user.id);
+        
+        const isAdmin = roles?.some(r => r.role === 'admin');
+        if (isAdmin) {
+          navigate('/AdminLabubu/dashboard');
+        }
+      }
+    };
+    checkAuth();
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // Validate input
+    const validation = loginSchema.safeParse(credentials);
+    if (!validation.success) {
+      const errorMessage = validation.error.errors[0]?.message || "Input tidak valid";
+      toast({
+        title: "Validasi Gagal",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      setIsLoading(false);
+      return;
+    }
 
-    if (credentials.username === ADMIN_USERNAME && credentials.password === ADMIN_PASSWORD) {
-      sessionStorage.setItem('admin_authenticated', 'true');
+    try {
+      // Authenticate with Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: credentials.email,
+        password: credentials.password,
+      });
+
+      if (error) {
+        toast({
+          title: "Login Gagal",
+          description: "Email atau password salah.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      if (!data.session) {
+        toast({
+          title: "Login Gagal",
+          description: "Tidak dapat membuat sesi.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Check if user has admin role
+      const { data: roles, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', data.session.user.id);
+
+      if (rolesError) {
+        toast({
+          title: "Error",
+          description: "Tidak dapat memverifikasi role.",
+          variant: "destructive",
+        });
+        await supabase.auth.signOut();
+        setIsLoading(false);
+        return;
+      }
+
+      const isAdmin = roles?.some(r => r.role === 'admin');
+
+      if (!isAdmin) {
+        toast({
+          title: "Akses Ditolak",
+          description: "Anda tidak memiliki akses admin.",
+          variant: "destructive",
+        });
+        await supabase.auth.signOut();
+        setIsLoading(false);
+        return;
+      }
+
       toast({
         title: "Login Berhasil",
         description: "Selamat datang di Dashboard Admin.",
       });
       navigate('/AdminLabubu/dashboard');
-    } else {
+    } catch (err) {
       toast({
-        title: "Login Gagal",
-        description: "Username atau password salah.",
+        title: "Error",
+        description: "Terjadi kesalahan saat login.",
         variant: "destructive",
       });
     }
@@ -58,18 +149,20 @@ const AdminLogin = () => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="username" className="block text-sm font-medium text-foreground mb-2">
-              Username
+            <label htmlFor="email" className="block text-sm font-medium text-foreground mb-2">
+              Email
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <Input
-                id="username"
-                value={credentials.username}
-                onChange={(e) => setCredentials({ ...credentials, username: e.target.value })}
+                id="email"
+                type="email"
+                value={credentials.email}
+                onChange={(e) => setCredentials({ ...credentials, email: e.target.value })}
                 required
-                placeholder="Masukkan username"
+                placeholder="Masukkan email admin"
                 className="h-12 pl-11"
+                autoComplete="email"
               />
             </div>
           </div>
@@ -88,6 +181,7 @@ const AdminLogin = () => {
                 required
                 placeholder="Masukkan password"
                 className="h-12 pl-11 pr-11"
+                autoComplete="current-password"
               />
               <button
                 type="button"
