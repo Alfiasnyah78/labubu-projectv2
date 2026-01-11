@@ -91,6 +91,9 @@ export const getSubmissions = async (): Promise<FormSubmission[]> => {
 export const addSubmission = async (
   submission: Omit<FormSubmission, 'id' | 'created_at' | 'status'>
 ): Promise<FormSubmission | null> => {
+  // Get current authenticated user to link submission
+  const { data: { user } } = await supabase.auth.getUser();
+  
   const { data, error } = await supabase
     .from('form_submissions')
     .insert({
@@ -101,6 +104,7 @@ export const addSubmission = async (
       service: submission.service,
       land_size: submission.land_size || null,
       message: submission.message || null,
+      user_id: user?.id || null, // Link to authenticated user if logged in
     })
     .select()
     .single();
